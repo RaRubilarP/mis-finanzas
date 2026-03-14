@@ -46,6 +46,6 @@ with tab_resumen:
 
 # Agregar al inicio del código anterior
 password = st.sidebar.text_input("Contraseña de acceso", type="password")
-if password != "TuClaveSecreta123":
+if password != "12345678":
     st.warning("Por favor introduce la contraseña correcta.")
     st.stop()
