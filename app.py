@@ -2,50 +2,62 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.set_page_config(page_title="Control Financiero Compartido", layout="wide")
+# Configuración de página
+st.set_page_config(page_title="Mis Finanzas", layout="centered")
 
-st.title("💰 Gestión de Gastos Compartida")
+st.title("💰 Control de Gastos")
 
 # Conexión con Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Leer datos existentes
-df = conn.read(ttl="0") # ttl="0" asegura que siempre lea los datos más recientes
+# Leer datos actuales
+try:
+    df = conn.read(ttl="0")
+except Exception:
+    df = pd.DataFrame(columns=["Fecha", "Tipo", "Categoría", "Método_Pago", "Monto", "Descripción"])
 
-tab_registro, tab_resumen = st.tabs(["📝 Registrar", "📊 Análisis"])
-
-with tab_registro:
-    with st.form("nuevo_registro"):
+# --- FORMULARIO DE REGISTRO ---
+with st.container():
+    st.subheader("📝 Nuevo Registro")
+    with st.form("formulario", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             fecha = st.date_input("Fecha")
             tipo = st.selectbox("Tipo", ["Gasto", "Ingreso"])
-            monto = st.number_input("Monto", min_value=0.0)
+            monto = st.number_input("Monto", min_value=0, step=100)
         with col2:
-            cat = st.selectbox("Categoría", ["Alimentación", "Ocio", "Vivienda", "Transporte", "Sueldo", "Otros"])
-            metodo = st.selectbox("Método", ["Tarjeta de Crédito", "Débito", "Efectivo"])
-            desc = st.text_input("Descripción")
+            cat = st.selectbox("Categoría", ["Alimentación", "Transporte", "Vivienda", "Ocio", "Salud", "Sueldo", "Otros"])
+            metodo = st.selectbox("Método", ["Efectivo", "Débito", "Tarjeta de Crédito"])
+            desc = st.text_input("Descripción (opcional)")
         
-        if st.form_submit_button("Guardar"):
-            nuevo_dato = pd.DataFrame([{
-                "Fecha": str(fecha), "Tipo": tipo, "Categoría": cat,
-                "Método_Pago": metodo, "Monto": monto, "Descripción": desc
-            }])
-            # Concatenar y actualizar Google Sheets
-            actualizado = pd.concat([df, nuevo_dato], ignore_index=True)
-            conn.update(data=actualizado)
-            st.success("¡Datos sincronizados en la nube!")
-            st.rerun()
+        boton_guardar = st.form_submit_button("Guardar Movimiento")
 
-with tab_resumen:
-    if not df.empty:
-        st.metric("Balance Total", f"${df[df['Tipo']=='Ingreso']['Monto'].sum() - df[df['Tipo']=='Gasto']['Monto'].sum():,.2f}")
-        st.dataframe(df.tail(10))
-    else:
-        st.info("No hay datos aún.")
+        if boton_guardar:
+            if monto > 0:
+                nuevo_registro = pd.DataFrame([{
+                    "Fecha": str(fecha),
+                    "Tipo": tipo,
+                    "Categoría": cat,
+                    "Método_Pago": metodo,
+                    "Monto": monto,
+                    "Descripción": desc
+                }])
+                
+                # Unir datos nuevos con los viejos
+                df_actualizado = pd.concat([df, nuevo_registro], ignore_index=True)
+                
+                # ACTUALIZAR EN GOOGLE SHEETS
+                conn.update(data=df_actualizado)
+                st.success("✅ ¡Guardado exitosamente en la nube!")
+                st.balloons()
+            else:
+                st.warning("Por favor, ingresa un monto mayor a 0")
 
-# Agregar al inicio del código anterior
-password = st.sidebar.text_input("Contraseña de acceso", type="password")
-if password != "12345678":
-    st.warning("Por favor introduce la contraseña correcta.")
-    st.stop()
+# --- VISUALIZACIÓN ---
+st.divider()
+st.subheader("📊 Últimos Movimientos")
+if not df.empty:
+    # Mostrar los últimos 5 registros
+    st.table(df.tail(5))
+else:
+    st.info("Aún no hay registros en tu Google Sheet.")
