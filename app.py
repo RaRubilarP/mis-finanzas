@@ -1,24 +1,18 @@
 import streamlit as st
+from supabase import create_client, Client
 import pandas as pd
-from batan import GSheetDB # Usaremos una lógica de guardado directo
 
+# Configuración de página
 st.set_page_config(page_title="Finanzas Pro", layout="centered")
 
-st.title("💰 Gestión Financiera")
+# Conexión a Supabase usando tus Secrets
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
+supabase: Client = create_client(url, key)
 
-# Configuración de la URL de tu hoja (sacada de Secrets)
-url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+st.title("💰 Control de Gastos Pro")
 
-# Función para leer datos (esta parte siempre funciona bien)
-@st.cache_data(ttl=0)
-def load_data():
-    csv_url = url.replace("/edit?usp=sharing", "/export?format=csv")
-    return pd.read_csv(csv_url)
-
-df = load_data()
-
-# --- FORMULARIO ---
-st.subheader("📝 Registrar Movimiento")
+# --- FORMULARIO DE INGRESO ---
 with st.form("form_gastos", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
@@ -30,14 +24,32 @@ with st.form("form_gastos", clear_on_submit=True):
         metodo = st.selectbox("Método", ["Efectivo", "Débito", "Tarjeta de Crédito"])
         desc = st.text_input("Descripción")
     
-    if st.form_submit_button("Guardar"):
-        # En lugar de usar la conexión de Streamlit que falla,
-        # enviamos el dato por un webhook o script de respaldo
-        st.info("Procesando envío seguro...")
-        # Aquí insertamos la lógica que no requiere permisos de administrador
-        st.success("✅ Datos guardados correctamente")
-        st.balloons()
+    if st.form_submit_button("Guardar Movimiento"):
+        if monto > 0:
+            data = {
+                "fecha": str(fecha),
+                "tipo": tipo,
+                "categoria": cat,
+                "metodo": metodo,
+                "monto": int(monto),
+                "descripcion": desc
+            }
+            try:
+                supabase.table("movimientos").insert(data).execute()
+                st.success("✅ ¡Guardado en Supabase!")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Error al guardar: {e}")
 
+# --- TABLA DE VISUALIZACIÓN ---
 st.divider()
-st.subheader("📊 Historial Reciente")
-st.dataframe(df.tail(10), use_container_width=True)
+st.subheader("📊 Últimos Movimientos")
+try:
+    response = supabase.table("movimientos").select("*").order("fecha", desc=True).limit(10).execute()
+    if response.data:
+        df = pd.DataFrame(response.data)
+        st.dataframe(df[["fecha", "tipo", "categoria", "monto", "descripcion"]], use_container_width=True)
+    else:
+        st.info("Aún no hay datos.")
+except Exception as e:
+    st.error("Error al cargar historial.")
